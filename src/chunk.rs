@@ -1,8 +1,13 @@
 use crate::value::Value;
-
+#[derive(Debug, Clone)]
 pub enum OpCode {
+    Negate,
     Return,
     Constant(usize),
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 pub struct Chunk {
     pub code: Vec<OpCode>,
