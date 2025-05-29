@@ -1,29 +1,40 @@
 use chunk::OpCode;
 
 mod chunk;
+mod compiler;
 mod debug;
+mod scanner;
+mod token_type;
 mod value;
 mod vm;
 fn main() {
-    let mut chunk = chunk::Chunk::new();
-    let index = chunk.add_constant(value::Value::Number(42.0));
-    chunk.write_chunk(OpCode::Constant(index), 15);
+    // let args = std::env::args().collect::<Vec<String>>();
 
-    let index = chunk.add_constant(value::Value::Number(29.0));
-    chunk.write_chunk(OpCode::Constant(index), 15);
-
-    chunk.write_chunk(OpCode::Add, 15);
-
-    let index = chunk.add_constant(value::Value::Number(10.0));
-    chunk.write_chunk(OpCode::Constant(index), 15);
-    chunk.write_chunk(OpCode::Subtract, 15);
-
-    chunk.write_chunk(OpCode::Negate, 15);
-
-    chunk.write_chunk(OpCode::Return, 15);
-    let mut vm = vm::VM::new(&chunk);
-    if let Err(e) = vm.interpret() {
-        eprintln!("Error: {}", e);
+    // match args.len() {
+    //     2 => {
+    //         // let script = &args[1];
+    //         let script = r"./test.lox";
+    //         let _ = run_file(script);
+    //     }
+    //     _ => {
+    //         eprintln!("Usage: {} <script>", args[0]);
+    //         std::process::exit(1);
+    //     }
+    // }
+    let script = r"./src/test.lox";
+    let _ = run_file(script);
+}
+fn run_file(script: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(script);
+    match source {
+        Ok(content) => {
+            let mut vm = vm::VM::new();
+            vm.interpret(&content);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error reading file {}: {}", script, e);
+            return Err(Box::new(e));
+        }
     }
-    // debug::dissemble_chunk(&chunk, "test chunk");
 }
