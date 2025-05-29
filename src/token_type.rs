@@ -1,4 +1,5 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(usize)] // <--- Add this attribute
 pub enum TokenType {
     // Single-character tokens. 单字符词法
     LeftParen,  // TOKEN_LEFT_PAREN
@@ -48,4 +49,5 @@ pub enum TokenType {
 
     Error, // TOKEN_ERROR
     Eof,   // TOKEN_EOF
+    Count, // <--- Add this as the last variant
 }

@@ -1,19 +1,19 @@
 use crate::token_type::TokenType;
 
-pub struct Scanner<'a> {
-    source: &'a str,
+pub struct Scanner {
+    source: String,
     start: usize,
     current: usize,
     line: usize,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token<'a> {
+pub struct Token {
     pub kind: TokenType,
-    pub lexeme: &'a str,
+    pub lexeme: String,
     pub line: usize,
 }
-impl<'a> Scanner<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl Scanner {
+    pub fn new(source: String) -> Self {
         Scanner {
             source,
             start: 0,
@@ -74,10 +74,10 @@ impl<'a> Scanner<'a> {
             }
             '"' => self.string(),
             _ if Self::is_alpha(c) => return self.identifier(),
-            _ => return self.error_token("Unexpected character."), // Handle other cases as needed
+            _ => return self.error_token("Unexpected character.".to_string()), // Handle other cases as needed
         }
     }
-    fn number(&mut self) -> Token<'a> {
+    fn number(&mut self) -> Token {
         while !self.is_at_end() && self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -89,9 +89,9 @@ impl<'a> Scanner<'a> {
             }
         }
         let lexeme = &self.source[self.start..self.current];
-        self.make_token_with_lexeme(TokenType::Number, lexeme)
+        self.make_token_with_lexeme(TokenType::Number, lexeme.to_string())
     }
-    fn string(&mut self) -> Token<'a> {
+    fn string(&mut self) -> Token {
         while !self.is_at_end() && self.peek() != '"' {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -99,12 +99,12 @@ impl<'a> Scanner<'a> {
             self.advance();
         }
         if self.is_at_end() {
-            return self.error_token("Unterminated string.");
+            return self.error_token("Unterminated string.".to_string());
         }
         // 现在我们已经到达了结束的引号
         self.advance(); // 跳过结束的引号
         let lexeme = &self.source[self.start + 1..self.current - 1]; // 去掉引号
-        self.make_token_with_lexeme(TokenType::String, lexeme)
+        self.make_token_with_lexeme(TokenType::String, lexeme.to_string())
     }
 
     fn advance(&mut self) -> char {
@@ -165,7 +165,7 @@ impl<'a> Scanner<'a> {
         self.source[self.current + 1..].chars().next().unwrap()
     }
 
-    fn identifier(&mut self) -> Token<'a> {
+    fn identifier(&mut self) -> Token {
         while !self.is_at_end() && (Self::is_alpha(self.peek()) || self.peek().is_ascii_digit()) {
             self.advance();
         }
@@ -188,29 +188,29 @@ impl<'a> Scanner<'a> {
             "var" => TokenType::Var,
             "while" => TokenType::While,
             _ if Self::is_alpha(lexeme.chars().next().unwrap()) => TokenType::Identifier, // 其他标识符
-            _ => return self.error_token("Unexpected identifier."),
+            _ => return self.error_token("Unexpected identifier.".to_string()),
         };
-        self.make_token_with_lexeme(kind, lexeme)
+        self.make_token_with_lexeme(kind, lexeme.to_string())
     }
     fn is_alpha(c: char) -> bool {
         c.is_ascii_alphabetic() || c == '_'
     }
-    fn make_token(&self, kind: TokenType) -> Token<'a> {
+    fn make_token(&self, kind: TokenType) -> Token {
         Token {
             kind,
-            lexeme: &self.source[self.start..self.current],
+            lexeme: self.source[self.start..self.current].to_string(),
             line: self.line,
         }
     }
 
-    fn make_token_with_lexeme(&self, kind: TokenType, lexeme: &'a str) -> Token<'a> {
+    fn make_token_with_lexeme(&self, kind: TokenType, lexeme: String) -> Token {
         Token {
             kind,
             lexeme: lexeme,
             line: self.line,
         }
     }
-    fn error_token(&self, message: &'a str) -> Token<'a> {
+    fn error_token(&self, message: String) -> Token {
         Token {
             kind: TokenType::Error,
             lexeme: message,

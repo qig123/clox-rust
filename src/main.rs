@@ -29,7 +29,11 @@ fn run_file(script: &str) -> Result<(), Box<dyn std::error::Error>> {
     match source {
         Ok(content) => {
             let mut vm = vm::VM::new();
-            vm.interpret(&content);
+            let c = vm.interpret(content);
+            match c {
+                Ok(_) => println!("Script executed successfully."),
+                Err(e) => eprintln!("Error executing script: {}", e),
+            }
             Ok(())
         }
         Err(e) => {
