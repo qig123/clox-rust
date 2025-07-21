@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+# *** 添加这个 features 部分 ***
+[features]
+# 我们定义一个名为 "debug_trace_execution" 的特性。
+# 它没有任何依赖，只是一个开关。
+debug_trace_execution = []

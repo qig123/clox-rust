@@ -1,13 +1,14 @@
 use crate::value::Value;
 
 pub struct Chunk {
-    code: Vec<OpCode>,
-    values: Vec<Value>,
-    lines: Vec<usize>,
+    pub code: Vec<OpCode>,
+    pub values: Vec<Value>,
+    pub lines: Vec<usize>,
 }
 pub enum OpCode {
     Return,
     Constant(usize),
+    Negate,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -26,14 +27,15 @@ impl Chunk {
         self.values.push(value);
         self.values.len() - 1
     }
+    #[cfg(feature = "debug_trace_execution")]
     pub fn disassemble(&self, name: &str) {
         println!("== {} ==", name);
         for (offset, _instruction) in self.code.iter().enumerate() {
             self.disassemble_instruction(offset);
         }
     }
-
-    fn disassemble_instruction(&self, offset: usize) {
+    #[cfg(feature = "debug_trace_execution")]
+    pub fn disassemble_instruction(&self, offset: usize) {
         print!("{:04} ", offset);
         if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
             print!("   | ");
@@ -47,11 +49,12 @@ impl Chunk {
                 OpCode::Constant(constant_index) => {
                     self.constant_instruction("OP_CONSTANT", *constant_index)
                 }
+                OpCode::Negate => self.simple_instruction("OP_NEGATE"),
             }
         }
     }
 
-    /// 辅助函数：处理常量指令
+    #[cfg(feature = "debug_trace_execution")]
     fn constant_instruction(&self, name: &str, constant_index: usize) {
         if let Some(value) = self.values.get(constant_index) {
             // {name:<16} - 左对齐，宽度为16
@@ -64,6 +67,7 @@ impl Chunk {
     }
 
     /// 辅助函数：处理简单指令（没有操作数的指令）
+    #[cfg(feature = "debug_trace_execution")]
     fn simple_instruction(&self, name: &str) {
         println!("{}", name);
     }
