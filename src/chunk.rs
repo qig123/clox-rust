@@ -9,6 +9,10 @@ pub enum OpCode {
     Return,
     Constant(usize),
     Negate,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -50,6 +54,10 @@ impl Chunk {
                     self.constant_instruction("OP_CONSTANT", *constant_index)
                 }
                 OpCode::Negate => self.simple_instruction("OP_NEGATE"),
+                OpCode::Add => self.simple_instruction("OP_ADD"),
+                OpCode::Subtract => self.simple_instruction("OP_Subtract"),
+                OpCode::Multiply => self.simple_instruction("OP_Multiply"),
+                OpCode::Divide => self.simple_instruction("OP_Divide"),
             }
         }
     }

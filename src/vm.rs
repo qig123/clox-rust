@@ -72,10 +72,29 @@ impl Vm {
                 }
                 OpCode::Negate => {
                     match self.pop().ok() {
-                        // pop()返回Result, ok()将其转为Option
                         Some(Value::Number(n)) => self.push(Value::Number(-n)),
                         // Some(_) => runtime_error!(self, "Operand must be a number."),
                         None => runtime_error!(self, "Stack underflow on negate."),
+                    }
+                }
+                OpCode::Add => {
+                    if self.binary_op(|a, b| Value::Number(a + b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
+                    }
+                }
+                OpCode::Multiply => {
+                    if self.binary_op(|a, b| Value::Number(a * b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
+                    }
+                }
+                OpCode::Subtract => {
+                    if self.binary_op(|a, b| Value::Number(a - b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
+                    }
+                }
+                OpCode::Divide => {
+                    if self.binary_op(|a, b| Value::Number(a / b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
                     }
                 }
             }
@@ -86,6 +105,28 @@ impl Vm {
     }
     fn pop(&mut self) -> Result<Value, ()> {
         self.stack.pop().ok_or(())
+    }
+    fn binary_op<F>(&mut self, op: F) -> Result<(), ()>
+    where
+        F: FnOnce(f64, f64) -> Value,
+    {
+        // pop()返回Result,所以我们可以用'?'来简化错误处理
+        // 但这里我们需要区分“栈下溢”和“类型错误”，所以手动match更好
+        let b = match self.pop() {
+            Ok(val) => val,
+            Err(_) => return Err(()), // 栈下溢，但我们在这里把它当作通用错误
+        };
+        let a = match self.pop() {
+            Ok(val) => val,
+            Err(_) => return Err(()),
+        };
+
+        match (a, b) {
+            (Value::Number(num_a), Value::Number(num_b)) => {
+                self.push(op(num_a, num_b));
+                Ok(()) // 操作成功
+            } // _ => Err(()), // 操作数类型错误
+        }
     }
     fn runtime_error(&mut self, message: &str) {
         eprintln!("{}", message);

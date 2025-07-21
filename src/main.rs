@@ -8,22 +8,53 @@ mod chunk;
 mod value;
 mod vm;
 fn main() {
+    // 我们的目标是计算: (1.2 + 3.4) / 5.6 - 7.8 * 9.0
+    // 预期结果: 4.6 / 5.6 - 70.2 = 0.8214... - 70.2 = -69.3785...
+    println!("Testing expression: (1.2 + 3.4) / 5.6 - 7.8 * 9.0");
+    println!("--------------------------------------------------");
+
     let mut chunk = Chunk::new();
+    let line = 1; // 假设所有指令都在第1行
 
-    // 计算 -1.2
-    // 1. 将 1.2 加载到常量池
-    let constant = chunk.add_constant(Value::from_number(1.2));
-    // 2. 生成 OP_CONSTANT 指令，将 1.2 从常量池推到栈上
-    chunk.write(OpCode::Constant(constant), 123);
-    // 3. 生成 OP_NEGATE 指令，弹出 1.2，计算 -1.2，再推回栈上
-    chunk.write(OpCode::Negate, 123);
-    // 4. 生成 OP_RETURN 指令，弹出栈顶的值并打印
-    chunk.write(OpCode::Return, 123);
+    // --- (1.2 + 3.4) ---
+    let const_1 = chunk.add_constant(Value::from_number(1.2));
+    chunk.write(OpCode::Constant(const_1), line);
 
+    let const_2 = chunk.add_constant(Value::from_number(3.4));
+    chunk.write(OpCode::Constant(const_2), line);
+
+    chunk.write(OpCode::Add, line);
+
+    // --- / 5.6 ---
+    let const_3 = chunk.add_constant(Value::from_number(5.6));
+    chunk.write(OpCode::Constant(const_3), line);
+
+    chunk.write(OpCode::Divide, line);
+
+    // --- 7.8 * 9.0 ---
+    let const_4 = chunk.add_constant(Value::from_number(7.8));
+    chunk.write(OpCode::Constant(const_4), line);
+
+    let const_5 = chunk.add_constant(Value::from_number(9.0));
+    chunk.write(OpCode::Constant(const_5), line);
+
+    chunk.write(OpCode::Multiply, line);
+
+    // --- 最后一步：减法 ---
+    chunk.write(OpCode::Subtract, line);
+
+    // 添加一个 Negate 来测试它是否还能工作
+    chunk.write(OpCode::Negate, line); // 这会将结果取负
+
+    // 最终返回并打印结果
+    chunk.write(OpCode::Return, line);
+
+    // 启用调试跟踪时，先打印完整的字节码
     #[cfg(feature = "debug_trace_execution")]
     {
-        chunk.disassemble("test chunk");
-        println!();
+        println!("\n== Disassembled Chunk ==\n");
+        chunk.disassemble("Binary Ops Test");
+        println!("\n== VM Execution ==\n");
     }
 
     let mut vm = Vm::new(chunk);
