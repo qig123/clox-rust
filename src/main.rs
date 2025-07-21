@@ -2,13 +2,18 @@ use std::{env, fs, process};
 
 use crate::{
     chunk::{Chunk, OpCode},
+    compiler::Compiler,
+    parser::Parser,
     scanner::Scanner,
     token::TokenType,
     value::Value,
     vm::Vm,
 };
 
+mod ast;
 mod chunk;
+mod compiler;
+mod parser;
 mod scanner;
 mod token;
 mod value;
@@ -19,56 +24,99 @@ fn main() {
         eprintln!("Usage: rlox [script]");
         process::exit(64);
     }
-    run_file(&args[1]).unwrap_or_else(|err| {
-        // 这个 unwrap 只处理文件 I/O 错误
-        eprintln!("Could not read file: {}", err);
-        process::exit(74); // EX_IOERR
-    });
+    run_file(&args[1]);
 }
 
-fn run_file(path: &str) -> Result<(), std::io::Error> {
-    let source = fs::read_to_string(path)?;
-    let had_error = run(&source);
-    // 如果扫描/编译阶段有错误，就以错误码退出
-    if had_error {
-        process::exit(65); // EX_DATAERR，表示数据格式错误
-    }
-    Ok(())
+fn run_file(path: &str) {
+    let source = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Could not read file \"{}\": {}", path, e);
+            process::exit(74);
+        }
+    };
+    run(&source);
 }
+fn run(source: &str) {
+    let mut had_error = false;
 
-// run 函数现在返回一个布尔值，表示是否遇到了错误
-fn run(source: &str) -> bool {
+    // 1. 扫描 -> Token 流
+    // 这个阶段只负责生成 token 流，并顺便报告扫描错误。
     let mut scanner = Scanner::new(source);
-    let mut line = 0;
-    let mut had_error = false; // 错误标志
-
+    let mut tokens = Vec::new();
+    println!("--- Scanning ---");
     loop {
         let token = scanner.scan_token();
-
-        // 如果 token 是错误类型，报告它
         if token.token_type == TokenType::Error {
-            report(token.line, "", token.lexeme); // 使用一个新的辅助函数来报告错误
+            report(token.line, "", token.lexeme);
             had_error = true;
+            // **关键改动**: 不再 return，只是设置标志并继续扫描！
         }
 
-        // 为了便于调试，我们仍然可以打印所有 token
-        if token.line != line {
-            print!("{:4} ", token.line);
-            line = token.line;
-        } else {
-            print!("   | ");
-        }
-        println!("{}", token);
+        let token_type = token.token_type;
+        tokens.push(token);
 
-        if token.token_type == TokenType::Eof {
+        if token_type == TokenType::Eof {
             break;
         }
     }
 
-    had_error // 返回最终的错误状态
+    // (可选) 打印所有扫描到的 tokens，用于调试
+    // for token in &tokens {
+    //     println!("{:?}", token);
+    // }
+
+    // 如果扫描阶段已经发现错误，我们就不再进入解析和后续阶段。
+    // 这是一个重要的“故障保护”，防止解析器处理一个有缺陷的 token 流。
+    if had_error {
+        println!("Execution halted due to scanning errors.");
+        // 如果需要，这里可以 process::exit(65);
+        return;
+    }
+
+    // 2. 解析 -> AST (如果扫描成功)
+    println!("\n--- Parsing ---");
+    let mut parser = Parser::new(&tokens);
+    let expression = match parser.parse() {
+        Ok(expr) => expr,
+        Err(err) => {
+            // 解析器在遇到第一个无法处理的错误时就会停止并返回。
+            // 未来可以实现更复杂的错误恢复，让解析器能报告多个解析错误。
+            report(
+                err.token.line,
+                &format!(" at '{}'", err.token.lexeme),
+                &err.message,
+            );
+            had_error = true;
+            // 因为解析已经失败，我们直接返回，不进入编译阶段。
+            return;
+        }
+    };
+
+    // 如果解析阶段有错误，就不再继续
+    if had_error {
+        println!("Execution halted due to parsing errors.");
+        return;
+    }
+
+    // 3. 编译 -> 字节码 (如果解析成功)
+    println!("\n--- Compiling & Executing ---");
+    let compiler = Compiler::new();
+    let chunk = match compiler.compile(&expression) {
+        Ok(chunk) => chunk,
+        Err(e) => {
+            eprintln!("[Compiler Error] {}", e);
+            // had_error = true; // 可以在这里设置
+            return;
+        }
+    };
+
+    // 4. 执行 -> 结果
+    let mut vm = Vm::new(chunk);
+    let _ = vm.interpret();
 }
 
-// 新增：一个统一的错误报告函数
+// 统一的错误报告函数
 fn report(line: usize, location: &str, message: &str) {
     eprintln!("[line {}] Error{}: {}", line, location, message);
 }

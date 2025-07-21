@@ -1,16 +1,1 @@
-// test.lox - test identifiers and keywords
-
-var language = "Lox";
-var version = 1.0;
-
-if (version >= 1.0) {
-    print "Hello, " + language + "!";
-}
-
-for (var i = 0; i < 10; i = i + 1) {
-    // just a loop
-}
-
-// some edge cases
-var orc = "monster"; // 'or' is a prefix of 'orc'
-var andy = "name";   // 'and' is a prefix of 'andy'
+12.5
