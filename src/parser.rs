@@ -28,13 +28,45 @@ impl<'a> Parser<'a> {
     // program        → declaration* EOF ;
     // declaration    → varDecl | statement ;
     fn declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
-        if self.match_token(&[TokenType::Fun]) {
-            self.function("function") // "function" or "method"
+        if self.match_token(&[TokenType::Class]) {
+            self.class_declaration()
+        } else if self.match_token(&[TokenType::Fun]) {
+            self.function("function")
         } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
             self.statement()
         }
+    }
+    fn class_declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+
+        // 解析可选的父类
+        let superclass = if self.match_token(&[TokenType::Less]) {
+            self.consume(TokenType::Identifier, "Expect superclass name.")?;
+            // 将父类名包装成一个 Variable 表达式
+            Some(Expr::Variable {
+                name: self.tokens[self.current - 1],
+            })
+        } else {
+            None
+        };
+
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
+
+        let mut methods = Vec::new();
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            // 类体内部都是方法（在 Lox 中是 Stmt::Function）
+            methods.push(self.function("method")?);
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
+
+        Ok(Stmt::Class {
+            name,
+            superclass,
+            methods,
+        })
     }
     fn function(&mut self, kind: &str) -> Result<Stmt<'a>, ParseError<'a>> {
         let name = self.consume(TokenType::Identifier, &format!("Expect {} name.", kind))?;
@@ -237,33 +269,77 @@ impl<'a> Parser<'a> {
     fn expression(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
         self.assignment()
     }
-    // assignment     → IDENTIFIER "=" assignment | equality ;
     fn assignment(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
-        // 先解析一个更高优先级的表达式 (equality)
-        let expr = self.equality()?;
+        // 1. 解析一个可能是左值的表达式。这个表达式本身可以包含所有更高优先级的操作符
+        //    因此，我们调用下一级（这里是 equality）
+        let expr = self.logic_or()?;
 
-        // 如果后面跟着一个 '=', 说明可能是赋值语句
+        // 2. 检查后面是否跟着一个 '='
         if self.match_token(&[TokenType::Equal]) {
             let equals = self.tokens[self.current - 1]; // '=' token
-            // 赋值是右结合的，所以递归调用 assignment()
+            // 赋值是右结合的，所以递归调用 assignment
             let value = self.assignment()?;
 
-            // 检查左边是否是一个合法的赋值目标
-            if let Expr::Variable { name } = expr {
-                return Ok(Expr::Assign {
-                    name,
-                    value: Box::new(value),
-                });
+            // 3. 检查左边的 'expr' 是否是一个合法的赋值目标
+            match expr {
+                Expr::Variable { name } => {
+                    return Ok(Expr::Assign {
+                        name,
+                        value: Box::new(value),
+                    });
+                }
+                Expr::Get { object, name } => {
+                    // 如果左值是 a.b，我们创建一个 Set 表达式
+                    return Ok(Expr::Set {
+                        object,
+                        name,
+                        value: Box::new(value),
+                    });
+                }
+                // 如果左值是其他东西，比如 1+2，就是无效的
+                _ => {
+                    return Err(ParseError {
+                        token: equals,
+                        message: "Invalid assignment target.".to_string(),
+                    });
+                }
             }
-
-            // 如果不是，比如 1 = 2，这是个错误
-            return Err(ParseError {
-                token: equals,
-                message: "Invalid assignment target.".to_string(),
-            });
         }
 
-        // 如果没有 '='，就只是一个普通的 equality 表达式
+        // 4. 如果没有 '='，就返回我们从 equality() 解析到的表达式
+        Ok(expr)
+    }
+
+    fn logic_or(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
+        let mut expr = self.logic_and()?;
+
+        while self.match_token(&[TokenType::Or]) {
+            let operator = self.tokens[self.current - 1];
+            let right = self.logic_and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    // 新增 logic_and
+    fn logic_and(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
+        let mut expr = self.equality()?;
+
+        while self.match_token(&[TokenType::And]) {
+            let operator = self.tokens[self.current - 1];
+            let right = self.equality()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+
         Ok(expr)
     }
     // equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -357,10 +433,17 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
         let mut expr = self.primary()?;
 
-        // 循环处理连续调用，如 a()()
         loop {
             if self.match_token(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_token(&[TokenType::Dot]) {
+                // 新增: 处理 .property
+                let name =
+                    self.consume(TokenType::Identifier, "Expect property name after '.'.")?;
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name,
+                };
             } else {
                 break;
             }
@@ -438,6 +521,21 @@ impl<'a> Parser<'a> {
                             message: "Expected ')' after expression.".to_string(),
                         });
                     }
+                }
+                TokenType::This => {
+                    self.advance();
+                    return Ok(Expr::This {
+                        keyword: token_copy,
+                    });
+                }
+                // 新增: super
+                TokenType::Super => {
+                    self.advance(); // consume 'super'
+                    let keyword = token_copy;
+                    self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
+                    let method =
+                        self.consume(TokenType::Identifier, "Expect superclass method name.")?;
+                    return Ok(Expr::Super { keyword, method });
                 }
                 _ => {
                     return Err(ParseError {

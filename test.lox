@@ -1,6 +1,5 @@
-fun fib(n) {
-  if (n < 2) return n;
-  return fib(n - 1) + fib(n - 2);
+var a = true;
+var b = false;
+if (a or b and false) { // and 优先级高于 or
+  print "hello";
 }
-
-print fib(10);

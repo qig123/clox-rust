@@ -41,6 +41,30 @@ pub enum Expr<'a> {
         paren: Token<'a>,      // 右括号，用于错误报告
         arguments: Vec<Expr<'a>>,
     },
+    // 新增: 属性获取 instance.name
+    Get {
+        object: Box<Expr<'a>>,
+        name: Token<'a>,
+    },
+    Set {
+        object: Box<Expr<'a>>,
+        name: Token<'a>,
+        value: Box<Expr<'a>>,
+    },
+    // 新增: super 关键字
+    Super {
+        keyword: Token<'a>, // 'super' token
+        method: Token<'a>,  // 要调用的方法名
+    },
+    // 新增: this 关键字
+    This {
+        keyword: Token<'a>, // 'this' token
+    },
+    Logical {
+        left: Box<Expr<'a>>,
+        operator: Token<'a>, // 'and' or 'or'
+        right: Box<Expr<'a>>,
+    },
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'a> {
@@ -72,6 +96,12 @@ pub enum Stmt<'a> {
     While {
         condition: Expr<'a>,
         body: Box<Stmt<'a>>,
+    },
+    Class {
+        name: Token<'a>,
+        // 可选的父类
+        superclass: Option<Expr<'a>>, // 必须是 Expr::Variable
+        methods: Vec<Stmt<'a>>,       // 必须是 Stmt::Function
     },
 }
 
@@ -115,6 +145,33 @@ impl<'a> fmt::Display for Expr<'a> {
                     }
                 }
                 write!(f, "))")
+            }
+            // 新增 Get
+            Expr::Get { object, name } => {
+                write!(f, "(. {} {})", object, name.lexeme)
+            }
+            // 新增 Set
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => {
+                write!(f, "(= (. {} {}) {})", object, name.lexeme, value)
+            }
+            // 新增 Super
+            Expr::Super { method, .. } => {
+                write!(f, "(super {})", method.lexeme)
+            }
+            // 新增 This
+            Expr::This { .. } => {
+                write!(f, "this")
+            }
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                write!(f, "({} {} {})", operator.lexeme, left, right)
             }
         }
     }
@@ -187,6 +244,20 @@ impl<'a> fmt::Display for Stmt<'a> {
             // 新增 While
             Stmt::While { condition, body } => {
                 write!(f, "(while {} {})", condition, body)
+            }
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => {
+                write!(f, "(class {}", name.lexeme)?;
+                if let Some(sc) = superclass {
+                    write!(f, " < {}", sc)?;
+                }
+                for method in methods {
+                    write!(f, " {}", method)?;
+                }
+                write!(f, ")")
             }
         }
     }

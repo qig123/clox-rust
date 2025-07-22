@@ -52,91 +52,123 @@ impl<'a> Scanner<'a> {
             return self.make_token(TokenType::Eof);
         }
 
-        let c = self.advance();
-        if c.is_ascii_alphabetic() || c == '_' {
-            return self.identifier();
-        }
-        if c.is_ascii_digit() {
-            return self.number();
-        }
-        match c {
-            '(' => self.make_token(TokenType::LeftParen),
-            ')' => self.make_token(TokenType::RightParen),
-            '{' => self.make_token(TokenType::LeftBrace),
-            '}' => self.make_token(TokenType::RightBrace),
-            ';' => self.make_token(TokenType::Semicolon),
-            ',' => self.make_token(TokenType::Comma),
-            '.' => self.make_token(TokenType::Dot),
-            '-' => self.make_token(TokenType::Minus),
-            '+' => self.make_token(TokenType::Plus),
-            '/' => self.make_token(TokenType::Slash),
-            '*' => self.make_token(TokenType::Star),
-            '!' => {
-                let token_type = if self.match_char('=') {
-                    TokenType::BangEqual
-                } else {
-                    TokenType::Bang
-                };
-                self.make_token(token_type)
+        if let Some(c) = self.advance() {
+            if c.is_ascii_alphabetic() || c == '_' {
+                return self.identifier();
             }
-            '=' => {
-                let token_type = if self.match_char('=') {
-                    TokenType::EqualEqual
-                } else {
-                    TokenType::Equal
-                };
-                self.make_token(token_type)
+            if c.is_ascii_digit() {
+                return self.number();
             }
-            '<' => {
-                let token_type = if self.match_char('=') {
-                    TokenType::LessEqual
-                } else {
-                    TokenType::Less
-                };
-                self.make_token(token_type)
-            }
-            '>' => {
-                let token_type = if self.match_char('=') {
-                    TokenType::GreaterEqual
-                } else {
-                    TokenType::Greater
-                };
-                self.make_token(token_type)
-            }
-            // 检查是否是字符串的开头
-            '"' => self.string(),
 
-            _ => self.error_token("Unexpected character."),
+            // match 语句现在直接作用于字符 'c'
+            match c {
+                '(' => self.make_token(TokenType::LeftParen),
+                ')' => self.make_token(TokenType::RightParen),
+                '{' => self.make_token(TokenType::LeftBrace),
+                '}' => self.make_token(TokenType::RightBrace),
+                ';' => self.make_token(TokenType::Semicolon),
+                ',' => self.make_token(TokenType::Comma),
+                '.' => self.make_token(TokenType::Dot),
+                '-' => self.make_token(TokenType::Minus),
+                '+' => self.make_token(TokenType::Plus),
+                '/' => self.make_token(TokenType::Slash),
+                '*' => self.make_token(TokenType::Star),
+                '!' => {
+                    let token_type = if self.match_char('=') {
+                        TokenType::BangEqual
+                    } else {
+                        TokenType::Bang
+                    };
+                    self.make_token(token_type)
+                }
+                '=' => {
+                    let token_type = if self.match_char('=') {
+                        TokenType::EqualEqual
+                    } else {
+                        TokenType::Equal
+                    };
+                    self.make_token(token_type)
+                }
+                '<' => {
+                    let token_type = if self.match_char('=') {
+                        TokenType::LessEqual
+                    } else {
+                        TokenType::Less
+                    };
+                    self.make_token(token_type)
+                }
+                '>' => {
+                    let token_type = if self.match_char('=') {
+                        TokenType::GreaterEqual
+                    } else {
+                        TokenType::Greater
+                    };
+                    self.make_token(token_type)
+                }
+                '"' => self.string(),
+
+                _ => self.error_token("Unexpected character."),
+            }
+        } else {
+            // 如果 advance() 返回 None，这意味着我们在 is_at_end() 检查之后到达了文件末尾
+            // 理论上，由于 is_at_end() 的检查，这个分支不应该被触及，但为了代码的完整性，
+            // 返回 EOF token 是最安全的选择。
+            self.make_token(TokenType::Eof)
         }
     }
 
     /// 跳过所有空白字符、换行符和注释
+    // in impl<'a> Scanner<'a>
+
     fn skip_whitespace(&mut self) {
         loop {
+            // peek() 现在返回 Option<char>，所以我们在 match 中处理 Some(char)
             match self.peek() {
-                // 普通空白
-                ' ' | '\r' | '\t' => {
-                    self.advance();
+                // 匹配到 Some 包裹的空白字符
+                Some(' ' | '\r' | '\t') => {
+                    self.advance(); // 安全地消耗掉
                 }
-                // 换行
-                '\n' => {
+                // 匹配到 Some 包裹的换行符
+                Some('\n') => {
                     self.line += 1;
                     self.advance();
                 }
-                // 注释，它会消耗掉到行尾的所有内容
-                '/' if self.peek_next() == '/' => {
-                    while self.peek() != '\n' && !self.is_at_end() {
-                        self.advance();
+                // 匹配到 Some 包裹的斜杠
+                Some('/') => {
+                    // peek_next() 也返回 Option<char>
+                    if self.peek_next() == Some('/') {
+                        // 确认是注释，消耗掉到行尾的所有内容
+                        // 循环条件也需要更新
+                        while self.peek() != Some('\n') && !self.is_at_end() {
+                            self.advance();
+                        }
+                    } else {
+                        // 如果 '/' 后面不是另一个 '/'，那它不是注释，
+                        // 而是除法操作符。我们应该停止跳过空白。
+                        return;
                     }
                 }
-                _ => return, // 遇到非空白字符，结束跳过
+                // 匹配到 None (文件末尾) 或任何其他非空白字符
+                _ => {
+                    // 停止跳过空白
+                    return;
+                }
             }
         }
     }
+    // in impl<'a> Scanner<'a>
+
     fn identifier(&mut self) -> Token<'a> {
-        while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
-            self.advance();
+        // 只要 peek() 返回 Some(c)，并且 c 符合条件，就继续循环
+        while let Some(c) = self.peek() {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                self.advance(); // 消耗这个字符
+            } else {
+                // 如果字符不符合条件，就跳出循环
+                break;
+            }
         }
+
         let token_type = self.identifier_type();
         self.make_token(token_type)
     }
@@ -153,90 +185,105 @@ impl<'a> Scanner<'a> {
             .unwrap_or(TokenType::Identifier)
     }
     /// 扫描一个字符串字面量
+    // in impl<'a> Scanner<'a>
+
     fn string(&mut self) -> Token<'a> {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
+        // 循环直到遇到 " 或文件末尾
+        while self.peek() != Some('"') && !self.is_at_end() {
+            // 如果遇到换行符，增加行号
+            if self.peek() == Some('\n') {
                 self.line += 1;
             }
             self.advance();
         }
 
         if self.is_at_end() {
+            // 如果是因为文件末尾而跳出循环，说明字符串未闭合
             return self.error_token("Unterminated string.");
         }
 
-        // 消耗闭合的引号
+        // 如果是因为遇到了 '"' 而跳出循环，消耗掉这个闭合的引号
         self.advance();
+
         self.make_token(TokenType::String)
     }
 
     /// 扫描一个数字字面量
+    // in impl<'a> Scanner<'a>
+
     fn number(&mut self) -> Token<'a> {
         // 消耗整数部分
-        while self.peek().is_ascii_digit() {
+        // 使用 map_or 来保持简洁
+        while self.peek().map_or(false, |c| c.is_ascii_digit()) {
             self.advance();
         }
 
         // 检查小数部分
-        if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+        if self.peek() == Some('.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
             // 消耗 '.'
             self.advance();
 
             // 消耗小数部分的数字
-            while self.peek().is_ascii_digit() {
+            while self.peek().map_or(false, |c| c.is_ascii_digit()) {
                 self.advance();
             }
         }
 
         self.make_token(TokenType::Number)
     }
+    /// 检查并匹配下一个字符。如果匹配，就安全地消费它。
     fn match_char(&mut self, expected: char) -> bool {
         if self.is_at_end() {
             return false;
         }
-        if self.source.chars().nth(self.current).unwrap() != expected {
-            return false;
+        // 从当前字节位置开始的子字符串
+        let remaining = &self.source[self.current..];
+        if remaining.starts_with(expected) {
+            // 如果匹配，按字符的字节长度前进
+            self.current += expected.len_utf8();
+            true
+        } else {
+            false
         }
-
-        // 匹配成功，消耗字符
-        self.current += 1;
-        true
     }
 
-    /// 查看当前字符，但不消耗它
-    fn peek(&self) -> char {
+    /// 查看当前字符，但不消耗它。返回 Option<char>。
+    fn peek(&self) -> Option<char> {
         if self.is_at_end() {
-            return '\0'; // 用空字符表示文件结束
+            return None;
         }
-        self.source.chars().nth(self.current).unwrap()
+        // 安全地从当前字节位置获取第一个字符
+        self.source[self.current..].chars().next()
     }
 
-    /// 查看下一个字符
-    fn peek_next(&self) -> char {
-        if self.current + 1 >= self.source.len() {
-            return '\0';
+    /// 查看下一个字符。返回 Option<char>。
+    fn peek_next(&self) -> Option<char> {
+        if self.is_at_end() {
+            return None;
         }
-        self.source.chars().nth(self.current + 1).unwrap()
+        // 创建一个字符迭代器，跳过第一个，取第二个
+        let mut chars = self.source[self.current..].chars();
+        chars.next(); // 消耗第一个
+        chars.next() // 返回第二个（如果存在）
     }
-
-    /// 消耗当前字符并返回它，同时移动 current 指针
-    fn advance(&mut self) -> char {
-        self.current += 1;
-        self.source.chars().nth(self.current - 1).unwrap()
+    /// 消耗当前字符并返回它，同时安全地移动 current 字节指针。
+    fn advance(&mut self) -> Option<char> {
+        let ch = self.peek()?; // 使用新的 peek 获取字符
+        // 根据字符的 UTF-8 字节长度来前进 current
+        self.current += ch.len_utf8();
+        Some(ch)
     }
-
-    /// 检查是否已经处理完所有字符
+    /// 检查是否已经处理完所有字节。
     fn is_at_end(&self) -> bool {
         self.current >= self.source.len()
     }
 
-    /// 基于当前的 start 和 current 指针创建一个 Token
     fn make_token(&self, token_type: TokenType) -> Token<'a> {
         let lexeme = &self.source[self.start..self.current];
         Token::new(token_type, lexeme, self.line)
     }
 
-    /// 创建一个错误 Token
+    /// 创建一个错误 Token。
     fn error_token(&self, message: &'static str) -> Token<'a> {
         Token::new(TokenType::Error, message, self.line)
     }
