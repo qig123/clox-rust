@@ -20,19 +20,88 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> Result<Vec<Stmt<'a>>, ParseError<'a>> {
         let mut statements = Vec::new();
         while !self.is_at_end() {
-            // 解析一个语句并添加到列表中
-            statements.push(self.statement()?);
+            // 现在解析声明，而不是语句
+            statements.push(self.declaration()?);
         }
         Ok(statements)
     }
-    // statement      → exprStmt | printStmt ;
+    // program        → declaration* EOF ;
+    // declaration    → varDecl | statement ;
+    fn declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        if self.match_token(&[TokenType::Var]) {
+            self.var_declaration()
+        } else {
+            // 如果没有 'var'，就是一个普通的语句
+            self.statement()
+        }
+    }
+
+    // varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+    fn var_declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        // 'var' 已经被消费
+        let name = self.consume(TokenType::Identifier, "Expect variable name.")?;
+
+        let initializer = if self.match_token(&[TokenType::Equal]) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    // statement      → exprStmt | ifStmt | printStmt | block ;
     fn statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
-        // 查看下一个 token 来决定是哪种语句
-        if self.match_token(&[TokenType::Print]) {
+        if self.match_token(&[TokenType::If]) {
+            self.if_statement()
+        } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::LeftBrace]) {
+            // Block 语句返回一个包含 Stmt::Block 的 Ok
+            Ok(Stmt::Block {
+                statements: self.block()?,
+            })
         } else {
             self.expression_statement()
         }
+    }
+    // ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
+    fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        // 'if' 已经被消费
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after if condition.")?;
+
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.match_token(&[TokenType::Else]) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+    // block          → "{" declaration* "}" ;
+    // 注意：block 返回 Vec<Stmt>，而不是 Result<Stmt>，因为它内部是一系列语句
+    fn block(&mut self) -> Result<Vec<Stmt<'a>>, ParseError<'a>> {
+        // '{' 已经被消费
+        let mut statements = Vec::new();
+
+        // 循环解析，直到遇到 '}' 或文件末尾
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?);
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        Ok(statements)
     }
 
     // printStmt      → "print" expression ";" ;
@@ -51,7 +120,36 @@ impl<'a> Parser<'a> {
     }
     // -- 语法规则函数 --
     fn expression(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
-        self.equality()
+        self.assignment()
+    }
+    // assignment     → IDENTIFIER "=" assignment | equality ;
+    fn assignment(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
+        // 先解析一个更高优先级的表达式 (equality)
+        let expr = self.equality()?;
+
+        // 如果后面跟着一个 '=', 说明可能是赋值语句
+        if self.match_token(&[TokenType::Equal]) {
+            let equals = self.tokens[self.current - 1]; // '=' token
+            // 赋值是右结合的，所以递归调用 assignment()
+            let value = self.assignment()?;
+
+            // 检查左边是否是一个合法的赋值目标
+            if let Expr::Variable { name } = expr {
+                return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+
+            // 如果不是，比如 1 = 2，这是个错误
+            return Err(ParseError {
+                token: equals,
+                message: "Invalid assignment target.".to_string(),
+            });
+        }
+
+        // 如果没有 '='，就只是一个普通的 equality 表达式
+        Ok(expr)
     }
     // equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     fn equality(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
@@ -142,19 +240,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // primary        → NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
+    // primary        → NUMBER | STRING | "true" | "false" | "nil"
+    //                | "(" expression ")" | IDENTIFIER ;
     fn primary(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
-        // 提前拿到上一个 token 的引用，用于出错时回溯
-        // 注意：peek 在这里比 advance 更好，因为它不消耗 token，方便错误处理
         if let Some(token) = self.peek() {
-            let token_copy = *token; // 创建一个副本，因为接下来可能会消耗它
+            let token_copy = *token;
             match token_copy.token_type {
                 TokenType::False
                 | TokenType::True
                 | TokenType::Nil
                 | TokenType::Number
                 | TokenType::String => {
-                    self.advance(); // 匹配成功，消耗 token
+                    self.advance();
                     return match token_copy.token_type {
                         TokenType::False => Ok(Expr::Literal(LiteralValue::Boolean(false))),
                         TokenType::True => Ok(Expr::Literal(LiteralValue::Boolean(true))),
@@ -167,16 +264,21 @@ impl<'a> Parser<'a> {
                             let value = &token_copy.lexeme[1..token_copy.lexeme.len() - 1];
                             Ok(Expr::Literal(LiteralValue::String(value.to_string())))
                         }
-                        _ => unreachable!(), // 逻辑上不可能到达这里
+                        _ => unreachable!(),
                     };
                 }
+
+                TokenType::Identifier => {
+                    self.advance();
+                    return Ok(Expr::Variable { name: token_copy });
+                }
+
                 TokenType::LeftParen => {
-                    self.advance(); // 消耗 '('
+                    self.advance();
                     let expr = self.expression()?;
                     if self.match_token(&[TokenType::RightParen]) {
                         return Ok(Expr::Grouping(Box::new(expr)));
                     } else {
-                        // 错误发生在 ')' 的位置，所以 peek() 指向的 token 是最合适的
                         return Err(ParseError {
                             token: *self.peek().unwrap_or(&token_copy),
                             message: "Expected ')' after expression.".to_string(),
@@ -184,7 +286,6 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => {
-                    // 不匹配任何 primary 表达式，报错
                     return Err(ParseError {
                         token: token_copy,
                         message: "Expected a primary expression.".to_string(),
@@ -193,13 +294,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        // 如果 peek() 返回 None，说明已经到文件末尾了
         Err(ParseError {
-            token: *self.tokens.last().unwrap(), // 使用真实的 EOF token
+            token: *self.tokens.last().unwrap(),
             message: "Expected primary expression, but reached end of file.".to_string(),
         })
     }
-
     // -- 辅助函数 --
     // 检查并消费一个 token，如果类型不匹配则返回错误
     fn consume(
