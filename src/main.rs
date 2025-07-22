@@ -77,7 +77,7 @@ fn run(source: &str) {
     // 2. 解析 -> AST (如果扫描成功)
     println!("\n--- Parsing ---");
     let mut parser = Parser::new(&tokens);
-    let expression = match parser.parse() {
+    let ast = match parser.parse() {
         Ok(expr) => expr,
         Err(err) => {
             // 解析器在遇到第一个无法处理的错误时就会停止并返回。
@@ -92,7 +92,10 @@ fn run(source: &str) {
             return;
         }
     };
-
+    for stmt in ast {
+        // 直接打印，因为 Stmt 实现了 Display
+        println!("{}", stmt);
+    }
     // 如果解析阶段有错误，就不再继续
     if had_error {
         println!("Execution halted due to parsing errors.");
@@ -101,19 +104,19 @@ fn run(source: &str) {
 
     // 3. 编译 -> 字节码 (如果解析成功)
     println!("\n--- Compiling & Executing ---");
-    let compiler = Compiler::new();
-    let chunk = match compiler.compile(&expression) {
-        Ok(chunk) => chunk,
-        Err(e) => {
-            eprintln!("[Compiler Error] {}", e);
-            // had_error = true; // 可以在这里设置
-            return;
-        }
-    };
+    // let compiler = Compiler::new();
+    // let chunk = match compiler.compile(&expression) {
+    //     Ok(chunk) => chunk,
+    //     Err(e) => {
+    //         eprintln!("[Compiler Error] {}", e);
+    //         // had_error = true; // 可以在这里设置
+    //         return;
+    //     }
+    // };
 
-    // 4. 执行 -> 结果
-    let mut vm = Vm::new(chunk);
-    let _ = vm.interpret();
+    // // 4. 执行 -> 结果
+    // let mut vm = Vm::new(chunk);
+    // let _ = vm.interpret();
 }
 
 // 统一的错误报告函数

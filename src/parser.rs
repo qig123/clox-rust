@@ -1,6 +1,6 @@
 // src/parser.rs
 
-use crate::ast::{Expr, LiteralValue};
+use crate::ast::{Expr, LiteralValue, Stmt};
 use crate::token::{Token, TokenType};
 
 pub struct Parser<'a> {
@@ -17,9 +17,37 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token<'a>]) -> Self {
         Parser { tokens, current: 0 }
     }
-    // 主入口，目标是解析一个完整的表达式
-    pub fn parse(&mut self) -> Result<Expr, ParseError<'a>> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt<'a>>, ParseError<'a>> {
+        let mut statements = Vec::new();
+        while !self.is_at_end() {
+            // 解析一个语句并添加到列表中
+            statements.push(self.statement()?);
+        }
+        Ok(statements)
+    }
+    // statement      → exprStmt | printStmt ;
+    fn statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        // 查看下一个 token 来决定是哪种语句
+        if self.match_token(&[TokenType::Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    // printStmt      → "print" expression ";" ;
+    fn print_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        // "print" 关键字已经被 match_token 消费掉了
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
+        Ok(Stmt::Print(value))
+    }
+
+    // exprStmt       → expression ";" ;
+    fn expression_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
+        Ok(Stmt::Expression(expr))
     }
     // -- 语法规则函数 --
     fn expression(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
@@ -173,6 +201,23 @@ impl<'a> Parser<'a> {
     }
 
     // -- 辅助函数 --
+    // 检查并消费一个 token，如果类型不匹配则返回错误
+    fn consume(
+        &mut self,
+        token_type: TokenType,
+        message: &str,
+    ) -> Result<Token<'a>, ParseError<'a>> {
+        if self.check(token_type) {
+            // advance 返回 Option<&Token>，这里我们确定它不是 None
+            // 使用 clone 是因为 ParseError 需要拥有 Token
+            Ok(*self.advance().unwrap())
+        } else {
+            Err(ParseError {
+                token: *self.peek().unwrap(), // 错误发生在这里
+                message: message.to_string(),
+            })
+        }
+    }
 
     // 查看当前 token 但不消费它
     fn peek(&self) -> Option<&Token<'a>> {
