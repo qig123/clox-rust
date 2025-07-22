@@ -1,5 +1,26 @@
-var a = true;
-var b = false;
-if (a or b and false) { // and 优先级高于 or
-  print "hello";
+// test_recovery.lox
+
+// 错误 1: 变量声明后缺少分号
+var a = 1
+
+// 这是一个正确的语句，解析器应该能在错误1之后成功解析它
+print "hello";
+
+// 错误 2: for 循环的括号里缺少了第二个分号
+for (var i = 0; i < 10 i = i + 1) {
+  print i;
 }
+
+// 错误 3: if 条件后缺少右括号
+if (a > 0 {
+  print "a is positive";
+}
+
+// 这是一个正确的类声明，用于测试在块级错误后的恢复
+class Foo {}
+
+// 错误 4: 赋值给一个无效的目标 (一个字面量)
+123 = 456;
+
+// 错误 5: 在顶层使用 return
+return "at top level";

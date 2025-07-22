@@ -5,7 +5,7 @@ use crate::{
     compiler::Compiler,
     parser::Parser,
     scanner::Scanner,
-    token::TokenType,
+    token::{Token, TokenType},
     value::Value,
     vm::Vm,
 };
@@ -40,66 +40,45 @@ fn run_file(path: &str) {
 fn run(source: &str) {
     let mut had_error = false;
 
-    // 1. 扫描 -> Token 流
-    // 这个阶段只负责生成 token 流，并顺便报告扫描错误。
-    let mut scanner = Scanner::new(source);
-    let mut tokens = Vec::new();
-    println!("--- Scanning ---");
-    loop {
-        let token = scanner.scan_token();
-        if token.token_type == TokenType::Error {
-            report(token.line, "", token.lexeme);
-            had_error = true;
-            // **关键改动**: 不再 return，只是设置标志并继续扫描！
-        }
+    // --- 1. Scanning ---
+    let (tokens, scan_had_error) = scan_source(source);
+    had_error |= scan_had_error; // 更新全局错误标志
 
-        let token_type = token.token_type;
-        tokens.push(token);
-
-        if token_type == TokenType::Eof {
-            break;
-        }
-    }
-
-    // (可选) 打印所有扫描到的 tokens，用于调试
-    // for token in &tokens {
-    //     println!("{:?}", token);
-    // }
-
-    // 如果扫描阶段已经发现错误，我们就不再进入解析和后续阶段。
-    // 这是一个重要的“故障保护”，防止解析器处理一个有缺陷的 token 流。
     if had_error {
         println!("Execution halted due to scanning errors.");
-        // 如果需要，这里可以 process::exit(65);
         return;
     }
 
-    // 2. 解析 -> AST (如果扫描成功)
+    // --- 2. Parsing ---
     println!("\n--- Parsing ---");
     let mut parser = Parser::new(&tokens);
-    let ast = match parser.parse() {
-        Ok(expr) => expr,
-        Err(err) => {
-            // 解析器在遇到第一个无法处理的错误时就会停止并返回。
-            // 未来可以实现更复杂的错误恢复，让解析器能报告多个解析错误。
+    // 调用新的 parse 方法
+    let parse_result = parser.parse();
+
+    // 检查解析过程中是否收集到了错误
+    if !parse_result.errors.is_empty() {
+        had_error = true;
+        println!("Found {} parsing error(s):", parse_result.errors.len());
+        for err in parse_result.errors {
             report(
                 err.token.line,
                 &format!(" at '{}'", err.token.lexeme),
                 &err.message,
             );
-            had_error = true;
-            // 因为解析已经失败，我们直接返回，不进入编译阶段。
-            return;
         }
-    };
-    for stmt in ast {
-        // 直接打印，因为 Stmt 实现了 Display
-        println!("{}", stmt);
     }
-    // 如果解析阶段有错误，就不再继续
+
+    // 如果有解析错误，就不再继续
     if had_error {
         println!("Execution halted due to parsing errors.");
         return;
+    }
+
+    // 如果没有错误，我们可以安全地使用解析出的 AST
+    let ast = parse_result.statements;
+    println!("Parsing successful. AST:");
+    for stmt in ast {
+        println!("{}", stmt);
     }
 
     // 3. 编译 -> 字节码 (如果解析成功)
@@ -117,6 +96,26 @@ fn run(source: &str) {
     // // 4. 执行 -> 结果
     // let mut vm = Vm::new(chunk);
     // let _ = vm.interpret();
+}
+
+fn scan_source(source: &str) -> (Vec<Token>, bool) {
+    let mut had_error = false;
+    let mut scanner = Scanner::new(source);
+    let mut tokens = Vec::new();
+
+    loop {
+        let token = scanner.scan_token();
+        if token.token_type == TokenType::Error {
+            report(token.line, "", token.lexeme);
+            had_error = true;
+        }
+        let token_type = token.token_type;
+        tokens.push(token);
+        if token_type == TokenType::Eof {
+            break;
+        }
+    }
+    (tokens, had_error)
 }
 
 // 统一的错误报告函数

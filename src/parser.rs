@@ -6,6 +6,12 @@ use crate::token::{Token, TokenType};
 pub struct Parser<'a> {
     tokens: &'a [Token<'a>],
     current: usize,
+    panic_mode: bool,
+}
+#[derive(Debug)]
+pub struct ParseResult<'a> {
+    pub statements: Vec<Stmt<'a>>,
+    pub errors: Vec<ParseError<'a>>,
 }
 #[derive(Debug)]
 pub struct ParseError<'a> {
@@ -15,18 +21,35 @@ pub struct ParseError<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token<'a>]) -> Self {
-        Parser { tokens, current: 0 }
-    }
-    pub fn parse(&mut self) -> Result<Vec<Stmt<'a>>, ParseError<'a>> {
-        let mut statements = Vec::new();
-        while !self.is_at_end() {
-            // 现在解析声明，而不是语句
-            statements.push(self.declaration()?);
+        Parser {
+            tokens,
+            current: 0,
+            panic_mode: false,
         }
-        Ok(statements)
     }
-    // program        → declaration* EOF ;
-    // declaration    → varDecl | statement ;
+    // parse() 的最终版本
+    pub fn parse(&mut self) -> ParseResult<'a> {
+        let mut statements = Vec::new();
+        let mut errors = Vec::new();
+
+        while !self.is_at_end() {
+            // 我们直接在循环里调用 declaration，并处理它可能返回的错误
+            // declaration 本身不处理错误，只向上抛
+            match self.declaration() {
+                Ok(stmt) => {
+                    statements.push(stmt);
+                }
+                Err(err) => {
+                    errors.push(err);
+                    // 关键：在捕获错误后，由调用者（parse）决定进行同步
+                    self.synchronize();
+                }
+            }
+        }
+        ParseResult { statements, errors }
+    }
+
+    // declaration() 和其他所有解析函数都保持原样，继续使用 '?' 向上抛出错误
     fn declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
         if self.match_token(&[TokenType::Class]) {
             self.class_declaration()
@@ -36,6 +59,45 @@ impl<'a> Parser<'a> {
             self.var_declaration()
         } else {
             self.statement()
+        }
+    }
+
+    // synchronize() 的小修正
+    fn synchronize(&mut self) {
+        // 这里不需要 panic_mode 标志了，因为同步逻辑只在捕获到错误时被调用一次
+        // self.panic_mode = false;
+
+        // consume a token to avoid infinite loops if the error is at a sync point
+        self.advance(); // **非常重要的一步！** 消耗掉导致错误的 token
+
+        while !self.is_at_end() {
+            // 如果前一个 token 是分号，说明一个语句可能结束了
+            // 因为我们 advance 了一次，所以现在是 self.current-1 指向了 'print'
+            // 而 self.current-2 指向了 '1'。所以要检查 self.tokens[self.current-1]
+            if self
+                .tokens
+                .get(self.current - 1)
+                .map_or(false, |t| t.token_type == TokenType::Semicolon)
+            {
+                return;
+            }
+
+            // 如果当前 token 是一个新语句的开始
+            match self.peek().map(|t| t.token_type) {
+                Some(TokenType::Class)
+                | Some(TokenType::Fun)
+                | Some(TokenType::Var)
+                | Some(TokenType::For)
+                | Some(TokenType::If)
+                | Some(TokenType::While)
+                | Some(TokenType::Print)
+                | Some(TokenType::Return) => {
+                    return;
+                }
+                _ => {}
+            }
+
+            self.advance(); // 继续丢弃 token
         }
     }
     fn class_declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
@@ -154,7 +216,7 @@ impl<'a> Parser<'a> {
         };
 
         // 2. Condition
-        let mut condition = if !self.check(TokenType::Semicolon) {
+        let condition = if !self.check(TokenType::Semicolon) {
             self.expression()?
         } else {
             // 如果没有条件，就是一个无限循环
