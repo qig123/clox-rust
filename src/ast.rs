@@ -36,6 +36,11 @@ pub enum Expr<'a> {
     Variable {
         name: Token<'a>,
     },
+    Call {
+        callee: Box<Expr<'a>>, // 被调用的表达式 (通常是变量)
+        paren: Token<'a>,      // 右括号，用于错误报告
+        arguments: Vec<Expr<'a>>,
+    },
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'a> {
@@ -54,6 +59,19 @@ pub enum Stmt<'a> {
     Var {
         name: Token<'a>,
         initializer: Option<Expr<'a>>,
+    },
+    Function {
+        name: Token<'a>,
+        params: Vec<Token<'a>>,
+        body: Vec<Stmt<'a>>, // 函数体是一个语句块
+    },
+    Return {
+        keyword: Token<'a>, // return 关键字，用于错误报告
+        value: Option<Expr<'a>>,
+    },
+    While {
+        condition: Expr<'a>,
+        body: Box<Stmt<'a>>,
     },
 }
 
@@ -85,6 +103,18 @@ impl<'a> fmt::Display for Expr<'a> {
             Expr::Variable { name } => {
                 // 直接打印变量名
                 write!(f, "{}", name.lexeme)
+            }
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                write!(f, "(call {} (", callee)?;
+                for (i, arg) in arguments.iter().enumerate() {
+                    write!(f, "{}", arg)?;
+                    if i < arguments.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, "))")
             }
         }
     }
@@ -131,6 +161,32 @@ impl<'a> fmt::Display for Stmt<'a> {
                     write!(f, " {}", init)?;
                 }
                 write!(f, ")")
+            }
+            Stmt::Function { name, params, body } => {
+                write!(f, "(fun {} (", name.lexeme)?;
+                for (i, param) in params.iter().enumerate() {
+                    write!(f, "{}", param.lexeme)?;
+                    if i < params.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, ") (block")?;
+                for stmt in body {
+                    write!(f, " {}", stmt)?;
+                }
+                write!(f, "))")
+            }
+            // 新增 Return
+            Stmt::Return { value, .. } => {
+                if let Some(val) = value {
+                    write!(f, "(return {})", val)
+                } else {
+                    write!(f, "(return)")
+                }
+            }
+            // 新增 While
+            Stmt::While { condition, body } => {
+                write!(f, "(while {} {})", condition, body)
             }
         }
     }

@@ -28,12 +28,47 @@ impl<'a> Parser<'a> {
     // program        → declaration* EOF ;
     // declaration    → varDecl | statement ;
     fn declaration(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
-        if self.match_token(&[TokenType::Var]) {
+        if self.match_token(&[TokenType::Fun]) {
+            self.function("function") // "function" or "method"
+        } else if self.match_token(&[TokenType::Var]) {
             self.var_declaration()
         } else {
-            // 如果没有 'var'，就是一个普通的语句
             self.statement()
         }
+    }
+    fn function(&mut self, kind: &str) -> Result<Stmt<'a>, ParseError<'a>> {
+        let name = self.consume(TokenType::Identifier, &format!("Expect {} name.", kind))?;
+        self.consume(
+            TokenType::LeftParen,
+            &format!("Expect '(' after {} name.", kind),
+        )?;
+
+        let mut params = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    // 不直接报错，而是记录一个错误，但继续解析
+                    // 这是一个高级技巧，现在可以先直接返回 Err
+                    return Err(ParseError {
+                        token: *self.peek().unwrap(),
+                        message: "Can't have more than 255 parameters.".to_string(),
+                    });
+                }
+                params.push(self.consume(TokenType::Identifier, "Expect parameter name.")?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+
+        self.consume(
+            TokenType::LeftBrace,
+            &format!("Expect '{{' before {} body.", kind),
+        )?;
+        let body = self.block()?;
+
+        Ok(Stmt::Function { name, params, body })
     }
 
     // varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -56,18 +91,98 @@ impl<'a> Parser<'a> {
 
     // statement      → exprStmt | ifStmt | printStmt | block ;
     fn statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
-        if self.match_token(&[TokenType::If]) {
+        if self.match_token(&[TokenType::For]) {
+            self.for_statement()
+        } else if self.match_token(&[TokenType::If]) {
             self.if_statement()
         } else if self.match_token(&[TokenType::Print]) {
             self.print_statement()
+        } else if self.match_token(&[TokenType::Return]) {
+            self.return_statement()
+        } else if self.match_token(&[TokenType::While]) {
+            self.while_statement()
         } else if self.match_token(&[TokenType::LeftBrace]) {
-            // Block 语句返回一个包含 Stmt::Block 的 Ok
             Ok(Stmt::Block {
                 statements: self.block()?,
             })
         } else {
             self.expression_statement()
         }
+    }
+    fn for_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
+
+        // 1. Initializer
+        let initializer = if self.match_token(&[TokenType::Semicolon]) {
+            None
+        } else if self.match_token(&[TokenType::Var]) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+
+        // 2. Condition
+        let mut condition = if !self.check(TokenType::Semicolon) {
+            self.expression()?
+        } else {
+            // 如果没有条件，就是一个无限循环
+            Expr::Literal(LiteralValue::Boolean(true))
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after loop condition.")?;
+
+        // 3. Increment
+        let increment = if !self.check(TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+        // 4. Body
+        let mut body = self.statement()?;
+
+        // 把它们组合起来
+        // a. 如果有增量，它在循环体每次执行后运行
+        if let Some(inc_expr) = increment {
+            body = Stmt::Block {
+                statements: vec![body, Stmt::Expression(inc_expr)],
+            };
+        }
+
+        // b. 创建 while 循环
+        let while_loop = Stmt::While {
+            condition,
+            body: Box::new(body),
+        };
+
+        // c. 如果有初始化器，它在整个循环之前运行
+        if let Some(init_stmt) = initializer {
+            Ok(Stmt::Block {
+                statements: vec![init_stmt, while_loop],
+            })
+        } else {
+            Ok(while_loop)
+        }
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+        let body = Box::new(self.statement()?);
+
+        Ok(Stmt::While { condition, body })
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
+        let keyword = self.tokens[self.current - 1]; // the 'return' token
+        let value = if !self.check(TokenType::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.consume(TokenType::Semicolon, "Expect ';' after return value.")?;
+        Ok(Stmt::Return { keyword, value })
     }
     // ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
     fn if_statement(&mut self) -> Result<Stmt<'a>, ParseError<'a>> {
@@ -236,8 +351,47 @@ impl<'a> Parser<'a> {
             })
         } else {
             // 如果没有一元操作符，就是一个 primary 表达式
-            self.primary()
+            self.call()
         }
+    }
+    fn call(&mut self) -> Result<Expr<'a>, ParseError<'a>> {
+        let mut expr = self.primary()?;
+
+        // 循环处理连续调用，如 a()()
+        loop {
+            if self.match_token(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+    fn finish_call(&mut self, callee: Expr<'a>) -> Result<Expr<'a>, ParseError<'a>> {
+        let mut arguments = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    return Err(ParseError {
+                        token: *self.peek().unwrap(),
+                        message: "Can't have more than 255 arguments.".to_string(),
+                    });
+                }
+                arguments.push(self.expression()?);
+                if !self.match_token(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        })
     }
 
     // primary        → NUMBER | STRING | "true" | "false" | "nil"
