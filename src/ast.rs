@@ -1,19 +1,30 @@
-// src/ast.rs
+// src/ast.rs (部分)
+use crate::token::Token;
 
-// 为了简单，我们先只定义表达式 AST
-// Expr 是一个枚举，代表所有可能的表达式类型
-#[derive(Debug)]
-pub enum Expr {
-    // 字面量表达式，比如 123, "hello", true, nil
-    Literal(LiteralValue),
-    // ... 后面会添加 Binary, Unary, Grouping 等
-}
-
-// 定义字面量的值
-#[derive(Debug)]
+// LiteralValue 也要扩展
+#[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
     Number(f64),
-    // String(String),
-    // Bool(bool),
-    // Nil,
+    String(String),
+    Boolean(bool),
+    Nil,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr<'a> {
+    // Binary: 用于所有二元操作符 (+, -, *, /, ==, !=, <, etc.)
+    Binary {
+        left: Box<Expr<'a>>,
+        operator: Token<'a>,
+        right: Box<Expr<'a>>,
+    },
+    // Unary: 用于 ! 和 -
+    Unary {
+        operator: Token<'a>,
+        right: Box<Expr<'a>>,
+    },
+    // Literal: 数字、字符串、布尔值、nil
+    Literal(LiteralValue),
+    // Grouping: 用于括号 (...)
+    Grouping(Box<Expr<'a>>),
 }

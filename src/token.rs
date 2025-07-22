@@ -55,7 +55,7 @@ pub enum TokenType {
 
 // Token 结构体
 // 它需要一个生命周期参数 'a，因为它包含一个对源字符串的引用 (&str)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token<'a> {
     pub token_type: TokenType,
     pub lexeme: &'a str, // 词素，即 token 在源文件中的原始文本

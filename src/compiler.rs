@@ -32,7 +32,13 @@ impl Compiler {
                     // 3. 生成 OP_CONSTANT 指令
                     chunk.write(OpCode::Constant(constant_index), 1); // 假设行号是 1
                 }
+                _ => {
+                    panic!()
+                }
             },
+            _ => {
+                panic!()
+            }
         }
         Ok(())
     }
