@@ -40,9 +40,10 @@ impl<'a> Compiler<'a> {
 
     fn parse_precedence(&mut self, min_precedence: u8) -> Result<(), String> {
         // 1. 处理前缀
-        self.advance();
-        let prev_token = self.previous.as_ref().unwrap().clone();
-        self.parse_prefix_rule(prev_token.token_type)?;
+        let prev_token = self
+            .advance()
+            .ok_or("Expected an expression at start of file.")?;
+        self.parse_prefix_rule(prev_token)?;
         // 2. 循环处理中缀
         loop {
             if let Some(current_token) = self.peek().cloned() {
@@ -56,9 +57,8 @@ impl<'a> Compiler<'a> {
                 }
 
                 // 消费并处理这个中缀操作符
-                self.advance();
-                let infix_token = self.previous.as_ref().unwrap().clone();
-                self.parse_infix_rule(infix_token.token_type)?;
+                let infix_token = self.advance().unwrap();
+                self.parse_infix_rule(infix_token)?;
             } else {
                 break;
             }
@@ -66,14 +66,10 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    // 新增：处理前缀规则的辅助函数
-    fn parse_prefix_rule(&mut self, token_type: TokenType) -> Result<(), String> {
-        // `self.previous` 在这里就是刚刚被 advance 的前缀 token
-        let prev_token = self.previous.as_ref().unwrap().clone();
-
-        match token_type {
+    fn parse_prefix_rule(&mut self, token: Token<'a>) -> Result<(), String> {
+        match token.token_type {
             TokenType::Number => {
-                let value: f64 = prev_token.lexeme.parse().unwrap();
+                let value: f64 = token.lexeme.parse().unwrap();
                 self.emit_constant(Value::from_number(value))?;
             }
             TokenType::LeftParen => {
@@ -81,42 +77,34 @@ impl<'a> Compiler<'a> {
                 self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
             }
             TokenType::Minus | TokenType::Bang => {
-                let (_, r_bp) = self.prefix_binding_power(token_type).unwrap();
+                let (_, r_bp) = self.prefix_binding_power(token.token_type).unwrap();
                 self.parse_precedence(r_bp)?;
 
-                if token_type == TokenType::Minus {
+                if token.token_type == TokenType::Minus {
                     self.emit_opcode(OpCode::Negate);
                 }
-                // else if token_type == TokenType::Bang { self.emit_opcode(OpCode::Not); }
             }
             _ => {
                 return Err(format!(
                     "Error at line {}: Expected an expression, but found '{}'.",
-                    prev_token.line, prev_token.lexeme
+                    token.line, token.lexeme
                 ));
             }
         }
         Ok(())
     }
-
-    // 新增：处理中缀规则的辅助函数
-    fn parse_infix_rule(&mut self, token_type: TokenType) -> Result<(), String> {
-        // `self.previous` 在这里是刚刚被 advance 的中缀 token
-        // 我们用传入的 token_type 来决定做什么
-        if let Some((_, r_bp)) = self.infix_binding_power(token_type) {
-            // 递归解析右侧表达式
+    fn parse_infix_rule(&mut self, token: Token<'a>) -> Result<(), String> {
+        if let Some((_, r_bp)) = self.infix_binding_power(token.token_type) {
             self.parse_precedence(r_bp)?;
 
-            // 发射操作码
-            match token_type {
+            match token.token_type {
                 TokenType::Plus => self.emit_opcode(OpCode::Add),
                 TokenType::Minus => self.emit_opcode(OpCode::Subtract),
                 TokenType::Star => self.emit_opcode(OpCode::Multiply),
                 TokenType::Slash => self.emit_opcode(OpCode::Divide),
-                _ => unreachable!("Infix rule called for a non-infix token"),
+                _ => unreachable!(),
             }
         } else {
-            // 这不应该发生，因为调用者已经检查过绑定力了
             unreachable!();
         }
         Ok(())
@@ -175,10 +163,15 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
     // ---- 解析辅助方法 ----
+    // 在 impl<'a> Compiler<'a> 中
+
     fn advance(&mut self) -> Option<Token<'a>> {
-        let next_token = self.tokens.next();
-        self.previous = next_token.cloned();
-        self.previous.clone()
+        // 1. 从迭代器中取出下一个 token
+        let next_token = self.tokens.next().cloned();
+        // 2. 更新 self.previous 状态 (副作用)
+        self.previous = next_token.clone();
+        // 3. 直接返回刚刚取出的 token (主要作用)
+        next_token
     }
 
     fn peek(&mut self) -> Option<&Token<'a>> {
