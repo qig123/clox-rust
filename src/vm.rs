@@ -118,6 +118,32 @@ impl<'a> Vm<'a> {
                         _ => self.push(Value::Bool(false)),
                     }
                 }
+                OpCode::EQUAL => {
+                    let b = self.pop().ok();
+                    let a = self.pop().ok();
+                    match (a, b) {
+                        (Some(Value::Number(a)), Some(Value::Number(b))) => {
+                            self.push(Value::Bool(a == b));
+                        }
+                        (Some(Value::Bool(a)), Some(Value::Bool(b))) => {
+                            self.push(Value::Bool(a == b));
+                        }
+                        (Some(Value::Nil), Some(Value::Nil)) => {
+                            self.push(Value::Bool(true));
+                        }
+                        _ => self.push(Value::Bool(false)),
+                    }
+                }
+                OpCode::GREATER => {
+                    if self.binary_op(|a, b| Value::Bool(a > b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
+                    }
+                }
+                OpCode::LESS => {
+                    if self.binary_op(|a, b| Value::Bool(a < b)).is_err() {
+                        runtime_error!(self, "Operands must be numbers.");
+                    }
+                }
             }
         }
     }

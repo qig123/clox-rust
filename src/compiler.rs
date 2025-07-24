@@ -8,9 +8,11 @@ use std::slice::Iter;
 enum Precedence {
     // 从低到高排列
     ZERO,
-    Term,   // 加减法，优先级最低
-    Factor, // 乘除法，优先级中等
-    Unary,  // 一元负号，优先级最高
+    Equality,   //==   !=
+    Comparison, // > < >= <=
+    Term,       // 加减法，优先级最低
+    Factor,     // 乘除法，优先级中等
+    Unary,      // 一元负号，优先级最高
 }
 
 pub struct Compiler<'a> {
@@ -106,6 +108,21 @@ impl<'a> Compiler<'a> {
                 TokenType::Minus => self.emit_opcode(OpCode::Subtract),
                 TokenType::Star => self.emit_opcode(OpCode::Multiply),
                 TokenType::Slash => self.emit_opcode(OpCode::Divide),
+                TokenType::EqualEqual => self.emit_opcode(OpCode::EQUAL),
+                TokenType::BangEqual => {
+                    self.emit_opcode(OpCode::EQUAL);
+                    self.emit_opcode(OpCode::Not);
+                }
+                TokenType::Greater => self.emit_opcode(OpCode::GREATER),
+                TokenType::GreaterEqual => {
+                    self.emit_opcode(OpCode::LESS);
+                    self.emit_opcode(OpCode::Not);
+                }
+                TokenType::Less => self.emit_opcode(OpCode::LESS),
+                TokenType::LessEqual => {
+                    self.emit_opcode(OpCode::GREATER);
+                    self.emit_opcode(OpCode::Not);
+                }
                 _ => unreachable!(),
             }
         } else {
@@ -127,6 +144,13 @@ impl<'a> Compiler<'a> {
         match op {
             TokenType::Plus | TokenType::Minus => Some((Term as u8, Term as u8 + 1)),
             TokenType::Star | TokenType::Slash => Some((Factor as u8, Factor as u8 + 1)),
+            TokenType::EqualEqual | TokenType::BangEqual => {
+                Some((Equality as u8, Equality as u8 + 1))
+            }
+            TokenType::Greater
+            | TokenType::GreaterEqual
+            | TokenType::Less
+            | TokenType::LessEqual => Some((Comparison as u8, Comparison as u8 + 1)),
             // 如果需要赋值操作符（右结合）
             // TokenType::Equal => Some((Assignment as u8, Assignment as u8)),
             _ => None,
