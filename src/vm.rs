@@ -1,9 +1,12 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    compiler::Compiler,
+    token::Token,
     value::Value,
 };
 
-pub struct Vm {
+pub struct Vm<'a> {
+    tokens: Vec<Token<'a>>,
     chunk: Chunk,
     ip: usize, // ip (instruction pointer) 指向即将被执行的指令
     stack: Vec<Value>,
@@ -16,23 +19,32 @@ pub enum InterpretResult {
     RuntimeError,
 }
 macro_rules! runtime_error {
-    // 宏接受 Vm 实例和格式化字符串
     ($vm:expr, $($arg:tt)*) => {{
         $vm.runtime_error(&format!($($arg)*));
         return InterpretResult::RuntimeError;
     }};
 }
 
-impl Vm {
-    pub fn new(chunk: Chunk) -> Self {
+impl<'a> Vm<'a> {
+    pub fn new(tokens: Vec<Token<'a>>) -> Self {
         Vm {
-            chunk,
+            tokens,
+            chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(STACK_MAX),
         }
     }
 
     pub fn interpret(&mut self) -> InterpretResult {
+        let c = Compiler::new(&self.tokens);
+        let r = c.compile();
+        match r {
+            Ok(chunk) => self.chunk = chunk,
+            Err(e) => {
+                eprintln!("[Compiler Error] {}", e);
+                return InterpretResult::RuntimeError;
+            }
+        }
         self.run()
     }
 

@@ -1,10 +1,12 @@
 use crate::value::Value;
+#[derive(Debug)]
 
 pub struct Chunk {
     pub code: Vec<OpCode>,
     pub values: Vec<Value>,
     pub lines: Vec<usize>,
 }
+#[derive(Debug)]
 pub enum OpCode {
     Return,
     Constant(usize),
