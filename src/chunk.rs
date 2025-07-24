@@ -18,6 +18,7 @@ pub enum OpCode {
     True,
     False,
     Nil,
+    Not,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -66,6 +67,7 @@ impl Chunk {
                 OpCode::True => self.simple_instruction("OP_TRUE"),
                 OpCode::False => self.simple_instruction("OP_FALSE"),
                 OpCode::Nil => self.simple_instruction("OP_NIL"),
+                OpCode::Not => self.simple_instruction("OP_NOT"),
             }
         }
     }

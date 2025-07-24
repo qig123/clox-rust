@@ -110,6 +110,14 @@ impl<'a> Vm<'a> {
                 OpCode::True => self.push(Value::Bool(true)),
                 OpCode::False => self.push(Value::Bool(false)),
                 OpCode::Nil => self.push(Value::Nil),
+                OpCode::Not => {
+                    let value = self.pop().ok();
+                    match value {
+                        Some(Value::Bool(b)) => self.push(Value::Bool(!b)),
+                        Some(Value::Nil) => self.push(Value::Bool(true)),
+                        _ => self.push(Value::Bool(false)),
+                    }
+                }
             }
         }
     }

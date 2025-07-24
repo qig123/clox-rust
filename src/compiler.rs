@@ -78,9 +78,10 @@ impl<'a> Compiler<'a> {
             TokenType::Minus | TokenType::Bang => {
                 let (_, r_bp) = self.prefix_binding_power(token.token_type).unwrap();
                 self.parse_precedence(r_bp)?;
-
-                if token.token_type == TokenType::Minus {
-                    self.emit_opcode(OpCode::Negate);
+                match token.token_type {
+                    TokenType::Minus => self.emit_opcode(OpCode::Negate),
+                    TokenType::Bang => self.emit_opcode(OpCode::Not),
+                    _ => unreachable!(),
                 }
             }
             TokenType::True => self.emit_opcode(OpCode::True),
