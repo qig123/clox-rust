@@ -55,7 +55,6 @@ impl<'a> Compiler<'a> {
                 } else {
                     break;
                 }
-
                 // 消费并处理这个中缀操作符
                 let infix_token = self.advance().unwrap();
                 self.parse_infix_rule(infix_token)?;
@@ -84,6 +83,10 @@ impl<'a> Compiler<'a> {
                     self.emit_opcode(OpCode::Negate);
                 }
             }
+            TokenType::True => self.emit_opcode(OpCode::True),
+            TokenType::False => self.emit_opcode(OpCode::False),
+            TokenType::Nil => self.emit_opcode(OpCode::Nil),
+
             _ => {
                 return Err(format!(
                     "Error at line {}: Expected an expression, but found '{}'.",
@@ -120,12 +123,9 @@ impl<'a> Compiler<'a> {
 
     fn infix_binding_power(&self, op: TokenType) -> Option<(u8, u8)> {
         use Precedence::*;
-
         match op {
             TokenType::Plus | TokenType::Minus => Some((Term as u8, Term as u8 + 1)),
-
             TokenType::Star | TokenType::Slash => Some((Factor as u8, Factor as u8 + 1)),
-
             // 如果需要赋值操作符（右结合）
             // TokenType::Equal => Some((Assignment as u8, Assignment as u8)),
             _ => None,

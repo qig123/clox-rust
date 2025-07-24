@@ -1,5 +1,5 @@
 # clox-rust
-cargo run --features "debug_trace_execution"
+cargo run --features "debug_trace_execution" ./test.lox
 
 cargo run -- test.lox
 

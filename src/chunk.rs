@@ -15,6 +15,9 @@ pub enum OpCode {
     Subtract,
     Multiply,
     Divide,
+    True,
+    False,
+    Nil,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -60,6 +63,9 @@ impl Chunk {
                 OpCode::Subtract => self.simple_instruction("OP_Subtract"),
                 OpCode::Multiply => self.simple_instruction("OP_Multiply"),
                 OpCode::Divide => self.simple_instruction("OP_Divide"),
+                OpCode::True => self.simple_instruction("OP_TRUE"),
+                OpCode::False => self.simple_instruction("OP_FALSE"),
+                OpCode::Nil => self.simple_instruction("OP_NIL"),
             }
         }
     }

@@ -82,13 +82,11 @@ impl<'a> Vm<'a> {
                     let constant = self.chunk.values[*index].clone();
                     self.push(constant);
                 }
-                OpCode::Negate => {
-                    match self.pop().ok() {
-                        Some(Value::Number(n)) => self.push(Value::Number(-n)),
-                        // Some(_) => runtime_error!(self, "Operand must be a number."),
-                        None => runtime_error!(self, "Stack underflow on negate."),
-                    }
-                }
+                OpCode::Negate => match self.pop().ok() {
+                    Some(Value::Number(n)) => self.push(Value::Number(-n)),
+                    Some(_) => runtime_error!(self, "Operand must be a number."),
+                    None => runtime_error!(self, "Stack underflow on negate."),
+                },
                 OpCode::Add => {
                     if self.binary_op(|a, b| Value::Number(a + b)).is_err() {
                         runtime_error!(self, "Operands must be numbers.");
@@ -109,6 +107,9 @@ impl<'a> Vm<'a> {
                         runtime_error!(self, "Operands must be numbers.");
                     }
                 }
+                OpCode::True => self.push(Value::Bool(true)),
+                OpCode::False => self.push(Value::Bool(false)),
+                OpCode::Nil => self.push(Value::Nil),
             }
         }
     }
@@ -137,7 +138,8 @@ impl<'a> Vm<'a> {
             (Value::Number(num_a), Value::Number(num_b)) => {
                 self.push(op(num_a, num_b));
                 Ok(()) // 操作成功
-            } // _ => Err(()), // 操作数类型错误
+            }
+            _ => Err(()), // 操作数类型错误
         }
     }
     fn runtime_error(&mut self, message: &str) {
