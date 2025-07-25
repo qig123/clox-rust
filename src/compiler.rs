@@ -2,6 +2,7 @@ use crate::chunk::{Chunk, OpCode};
 use crate::token::{Token, TokenType};
 use crate::value::Value;
 use std::iter::Peekable;
+use std::rc::Rc;
 use std::slice::Iter;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
@@ -72,6 +73,11 @@ impl<'a> Compiler<'a> {
             TokenType::Number => {
                 let value: f64 = token.lexeme.parse().unwrap();
                 self.emit_constant(Value::from_number(value))?;
+            }
+            TokenType::String => {
+                // 去掉前后的引号
+                let s: String = token.lexeme[1..token.lexeme.len() - 1].to_string();
+                self.emit_constant(Value::String(Rc::new(s)))?;
             }
             TokenType::LeftParen => {
                 self.parse_precedence(Precedence::ZERO as u8)?;

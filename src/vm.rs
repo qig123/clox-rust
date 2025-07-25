@@ -4,6 +4,7 @@ use crate::{
     token::Token,
     value::Value,
 };
+use std::rc::Rc;
 
 pub struct Vm<'a> {
     tokens: Vec<Token<'a>>,
@@ -63,8 +64,6 @@ impl<'a> Vm<'a> {
             }
 
             // 读取指令，然后增加 ip
-            // 注意：我们将 ip 的增加移到了这里，这更符合 ip 的定义
-            // "instruction pointer" 指向下一个要执行的指令
             let instruction = &self.chunk.code[self.ip];
             self.ip += 1;
 
@@ -72,24 +71,41 @@ impl<'a> Vm<'a> {
                 OpCode::Return => {
                     if let Ok(result) = self.pop() {
                         println!("{}", result);
-                        return InterpretResult::Ok;
-                    } else {
-                        self.runtime_error("Stack underflow on return.");
-                        return InterpretResult::RuntimeError;
                     }
+                    return InterpretResult::Ok;
                 }
                 OpCode::Constant(index) => {
                     let constant = self.chunk.values[*index].clone();
                     self.push(constant);
                 }
-                OpCode::Negate => match self.pop().ok() {
-                    Some(Value::Number(n)) => self.push(Value::Number(-n)),
-                    Some(_) => runtime_error!(self, "Operand must be a number."),
-                    None => runtime_error!(self, "Stack underflow on negate."),
+                OpCode::Negate => match self.peek(0) {
+                    Some(&Value::Number(_)) => {
+                        if let Ok(Value::Number(n)) = self.pop() {
+                            self.push(Value::Number(-n));
+                        }
+                    }
+                    _ => runtime_error!(self, "Operand must be a number."),
                 },
                 OpCode::Add => {
-                    if self.binary_op(|a, b| Value::Number(a + b)).is_err() {
-                        runtime_error!(self, "Operands must be numbers.");
+                    if let (Some(&Value::String(_)), Some(&Value::String(_))) =
+                        (self.peek(0), self.peek(1))
+                    {
+                        let b_val = self.pop().unwrap();
+                        let a_val = self.pop().unwrap();
+                        if let (Value::String(a_rc), Value::String(b_rc)) = (a_val, b_val) {
+                            let mut s = String::with_capacity(a_rc.len() + b_rc.len());
+                            s.push_str(&a_rc);
+                            s.push_str(&b_rc);
+                            self.push(Value::String(Rc::new(s)));
+                        }
+                    } else if let (Some(&Value::Number(_)), Some(&Value::Number(_))) =
+                        (self.peek(0), self.peek(1))
+                    {
+                        if self.binary_op(|a, b| Value::Number(a + b)).is_err() {
+                            runtime_error!(self, "Operands must be two numbers.");
+                        }
+                    } else {
+                        runtime_error!(self, "Operands must be two numbers or two strings.");
                     }
                 }
                 OpCode::Multiply => {
@@ -111,28 +127,13 @@ impl<'a> Vm<'a> {
                 OpCode::False => self.push(Value::Bool(false)),
                 OpCode::Nil => self.push(Value::Nil),
                 OpCode::Not => {
-                    let value = self.pop().ok();
-                    match value {
-                        Some(Value::Bool(b)) => self.push(Value::Bool(!b)),
-                        Some(Value::Nil) => self.push(Value::Bool(true)),
-                        _ => self.push(Value::Bool(false)),
-                    }
+                    let value = self.pop().unwrap();
+                    self.push(Value::Bool(value.is_falsey()));
                 }
                 OpCode::EQUAL => {
-                    let b = self.pop().ok();
-                    let a = self.pop().ok();
-                    match (a, b) {
-                        (Some(Value::Number(a)), Some(Value::Number(b))) => {
-                            self.push(Value::Bool(a == b));
-                        }
-                        (Some(Value::Bool(a)), Some(Value::Bool(b))) => {
-                            self.push(Value::Bool(a == b));
-                        }
-                        (Some(Value::Nil), Some(Value::Nil)) => {
-                            self.push(Value::Bool(true));
-                        }
-                        _ => self.push(Value::Bool(false)),
-                    }
+                    let b = self.pop().unwrap();
+                    let a = self.pop().unwrap();
+                    self.push(Value::Bool(a == b));
                 }
                 OpCode::GREATER => {
                     if self.binary_op(|a, b| Value::Bool(a > b)).is_err() {
@@ -153,27 +154,24 @@ impl<'a> Vm<'a> {
     fn pop(&mut self) -> Result<Value, ()> {
         self.stack.pop().ok_or(())
     }
+    fn peek(&self, distance: usize) -> Option<&Value> {
+        self.stack.get(self.stack.len() - 1 - distance)
+    }
     fn binary_op<F>(&mut self, op: F) -> Result<(), ()>
     where
         F: FnOnce(f64, f64) -> Value,
     {
-        // pop()返回Result,所以我们可以用'?'来简化错误处理
-        // 但这里我们需要区分“栈下溢”和“类型错误”，所以手动match更好
-        let b = match self.pop() {
-            Ok(val) => val,
-            Err(_) => return Err(()), // 栈下溢，但我们在这里把它当作通用错误
-        };
-        let a = match self.pop() {
-            Ok(val) => val,
-            Err(_) => return Err(()),
-        };
-
-        match (a, b) {
-            (Value::Number(num_a), Value::Number(num_b)) => {
+        if let (Some(&Value::Number(_)), Some(&Value::Number(_))) = (self.peek(0), self.peek(1)) {
+            let b = self.pop().unwrap();
+            let a = self.pop().unwrap();
+            if let (Value::Number(num_a), Value::Number(num_b)) = (a, b) {
                 self.push(op(num_a, num_b));
-                Ok(()) // 操作成功
+                Ok(())
+            } else {
+                unreachable!()
             }
-            _ => Err(()), // 操作数类型错误
+        } else {
+            Err(())
         }
     }
     fn runtime_error(&mut self, message: &str) {
