@@ -9,19 +9,30 @@ cargo run -- test.lox
 
  # 添加字符串，使用了Rc<String>
   已经实现
-# 添加对全局变量的支持
-    语法变化
-    statement      → exprStmt
-               | printStmt ;
 
-    declaration    → varDecl
-               | statement ;
-    到目前为止，我们的虚拟机都认为“程序”是一个表达式，所以我们将会支持语句，我们一步步来，为了支持语句，我们要支持声明。所以我们的语法
-    会变成这样     declaration    → varDecl | statement ; varDecl我们后续实现，我们先实现decl->statment ,然后 statment -> printStmt,
-    printStmt ->expression ....
-    我们先实现printStmt这一种，后面还有更多的statment， 所以我们的vm，compiler都要修改，
-     比如： 通常来说 print语句，就应该先求值再打印，所以我们的vm里面的return 指令就不用打印了
-    可能还要实现新的虚拟机指令，要怎样做呢？
-  
-               
+ # 语句和全局变量
 
+我们已经成功地将解释器从一个只能处理单个表达式的玩具，扩展为一个能够执行包含语句和全局变量的脚本的解释器。
+
+## 实现思路
+
+### 1. 从表达式到语句
+
+为了支持语句，我们对编译器和虚拟机进行了重大修改。
+
+- **新的 OpCodes**: 我们引入了 `OP_PRINT` 用于打印语句，以及 `OP_POP` 用于丢弃表达式语句在栈上留下的值。
+- **编译器更新**: 编译器的 `compile` 函数现在会循环解析一系列声明（`declaration`）。`declaration` 规则可以导向 `var_declaration`（用于变量声明）或 `statement`。`statement` 规则可以进一步导向 `print_statement` 或 `expression_statement`。
+- **虚拟机更新**: 虚拟机现在可以处理 `OP_PRINT` 和 `OP_POP` 指令。`OP_RETURN` 不再隐式打印结果，它的职责仅仅是结束执行。
+
+### 2. 全局变量
+
+我们通过引入一套新的指令和数据结构来实现全局变量。
+
+- **新的 OpCodes**:
+    - `OP_DEFINE_GLOBAL`: 用于定义一个新的全局变量。
+    - `OP_GET_GLOBAL`: 用于获取一个全局变量的值。
+    - `OP_SET_GLOBAL`: 用于给一个已存在的全局变量赋值。
+- **虚拟机中的全局变量表**: `Vm` 结构体现在包含一个 `globals: HashMap<String, Value>`，它作为全局变量的运行时存储。
+- **编译器中的变量处理**:
+    - **变量声明**: `var_declaration` 函数负责解析 `var` 语句。它会将变量名作为常量添加到常量池，编译初始化表达式（如果存在），然后发出 `OP_DEFINE_GLOBAL` 指令。
+    - **变量访问与赋值**: 解析器现在可以区分变量访问和赋值。当遇到一个标识符时，它会检查下一个 Token。如果是一个 `=`，它会编译右侧的表达式并发出 `OP_SET_GLOBAL`；否则，它会发出 `OP_GET_GLOBAL` 来获取变量的值。

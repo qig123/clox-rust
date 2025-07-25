@@ -9,6 +9,7 @@ use std::slice::Iter;
 enum Precedence {
     // 从低到高排列
     ZERO,
+    Assignment, // =
     Equality,   //==   !=
     Comparison, // > < >= <=
     Term,       // 加减法，优先级最低
@@ -42,7 +43,44 @@ impl<'a> Compiler<'a> {
     }
 
     fn declaration(&mut self) -> Result<(), String> {
-        self.statement()
+        if self.check(TokenType::Var) {
+            self.advance(); // consume 'var'
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<(), String> {
+        let global = self.parse_variable("Expect variable name.")?;
+
+        if self.check(TokenType::Equal) {
+            self.advance(); // consume '='
+            self.parse_precedence(Precedence::Assignment as u8)?;
+        } else {
+            self.emit_opcode(OpCode::Nil);
+        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
+
+        self.define_variable(global);
+        Ok(())
+    }
+
+    fn define_variable(&mut self, global: usize) {
+        self.emit_opcode(OpCode::DefineGlobal(global));
+    }
+
+    fn parse_variable(&mut self, error_message: &str) -> Result<usize, String> {
+        self.consume(TokenType::Identifier, error_message)?;
+        Ok(self.identifier_constant(&self.previous.unwrap()))
+    }
+
+    fn identifier_constant(&mut self, token: &Token) -> usize {
+        let s = token.lexeme.to_string();
+        self.chunk.add_constant(Value::String(Rc::new(s)))
     }
 
     fn statement(&mut self) -> Result<(), String> {
@@ -97,6 +135,16 @@ impl<'a> Compiler<'a> {
 
     fn parse_prefix_rule(&mut self, token: Token<'a>) -> Result<(), String> {
         match token.token_type {
+            TokenType::Identifier => {
+                let name = self.identifier_constant(&token.clone());
+                if self.check(TokenType::Equal) {
+                    self.advance();
+                    self.parse_precedence(Precedence::Assignment as u8)?;
+                    self.emit_opcode(OpCode::SetGlobal(name));
+                } else {
+                    self.emit_opcode(OpCode::GetGlobal(name));
+                }
+            }
             TokenType::Number => {
                 let value: f64 = token.lexeme.parse().unwrap();
                 self.emit_constant(Value::from_number(value))?;
@@ -184,8 +232,7 @@ impl<'a> Compiler<'a> {
             | TokenType::GreaterEqual
             | TokenType::Less
             | TokenType::LessEqual => Some((Comparison as u8, Comparison as u8 + 1)),
-            // 如果需要赋值操作符（右结合）
-            // TokenType::Equal => Some((Assignment as u8, Assignment as u8)),
+            TokenType::Equal => Some((Assignment as u8, Assignment as u8)),
             _ => None,
         }
     }

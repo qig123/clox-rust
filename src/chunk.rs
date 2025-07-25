@@ -24,6 +24,9 @@ pub enum OpCode {
     LESS,
     Print,
     Pop,
+    DefineGlobal(usize),
+    GetGlobal(usize),
+    SetGlobal(usize),
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -78,6 +81,15 @@ impl Chunk {
                 OpCode::LESS => self.simple_instruction("OP_LESS"),
                 OpCode::Print => self.simple_instruction("OP_PRINT"),
                 OpCode::Pop => self.simple_instruction("OP_POP"),
+                OpCode::DefineGlobal(constant_index) => {
+                    self.constant_instruction("OP_DEFINE_GLOBAL", *constant_index)
+                }
+                OpCode::GetGlobal(constant_index) => {
+                    self.constant_instruction("OP_GET_GLOBAL", *constant_index)
+                }
+                OpCode::SetGlobal(constant_index) => {
+                    self.constant_instruction("OP_SET_GLOBAL", *constant_index)
+                }
             }
         }
     }

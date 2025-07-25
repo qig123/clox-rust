@@ -4,6 +4,7 @@ use crate::{
     token::Token,
     value::Value,
 };
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Vm<'a> {
@@ -11,6 +12,7 @@ pub struct Vm<'a> {
     chunk: Chunk,
     ip: usize, // ip (instruction pointer) 指向即将被执行的指令
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 const STACK_MAX: usize = 256;
 #[derive(Debug, PartialEq)]
@@ -33,6 +35,7 @@ impl<'a> Vm<'a> {
             chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(STACK_MAX),
+            globals: HashMap::new(),
         }
     }
 
@@ -150,6 +153,30 @@ impl<'a> Vm<'a> {
                 }
                 OpCode::Pop => {
                     self.pop().unwrap();
+                }
+                OpCode::DefineGlobal(index) => {
+                    if let Value::String(name) = &self.chunk.values[*index] {
+                        self.globals.insert(name.to_string(), self.peek(0).unwrap().clone());
+                        let _ = self.pop();
+                    }
+                }
+                OpCode::GetGlobal(index) => {
+                    if let Value::String(name) = &self.chunk.values[*index] {
+                        if let Some(value) = self.globals.get(name.as_ref()) {
+                            self.push(value.clone());
+                        } else {
+                            runtime_error!(self, "Undefined variable '{}'.", name);
+                        }
+                    }
+                }
+                OpCode::SetGlobal(index) => {
+                    if let Value::String(name) = &self.chunk.values[*index] {
+                        if self.globals.contains_key(name.as_ref()) {
+                            self.globals.insert(name.to_string(), self.peek(0).unwrap().clone());
+                        } else {
+                            runtime_error!(self, "Undefined variable '{}'.", name);
+                        }
+                    }
                 }
             }
         }
