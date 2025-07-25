@@ -21,6 +21,8 @@ pub struct Compiler<'a> {
     tokens: Peekable<Iter<'a, Token<'a>>>,
     chunk: Chunk,
     previous: Option<Token<'a>>,
+    had_error: bool,
+    panic_mode: bool,
 }
 
 impl<'a> Compiler<'a> {
@@ -29,17 +31,28 @@ impl<'a> Compiler<'a> {
             tokens: tokens.iter().peekable(),
             chunk: Chunk::new(),
             previous: None,
+            had_error: false,
+            panic_mode: false,
         }
     }
 
     pub fn compile(mut self) -> Result<Chunk, String> {
         while !self.check(TokenType::Eof) {
-            self.declaration()?;
+            if self.panic_mode {
+                self.synchronize();
+            }
+            if let Err(e) = self.declaration() {
+                eprintln!("{}", e);
+                self.had_error = true;
+                self.panic_mode = true;
+            }
         }
         self.emit_return();
-        println!("[debug]{:?}", self.chunk.code);
-        println!("[debug]{:?}", self.chunk.values);
-        Ok(self.chunk)
+        if self.had_error {
+            Err("Compilation failed.".to_string())
+        } else {
+            Ok(self.chunk)
+        }
     }
 
     fn declaration(&mut self) -> Result<(), String> {
@@ -304,6 +317,36 @@ impl<'a> Compiler<'a> {
                 error_message,
                 found_token_str
             ))
+        }
+    }
+
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while !self.check(TokenType::Eof) {
+            if let Some(prev) = &self.previous {
+                if prev.token_type == TokenType::Semicolon {
+                    return;
+                }
+            }
+
+            if let Some(token) = self.peek() {
+                match token.token_type {
+                    TokenType::Class
+                    | TokenType::Fun
+                    | TokenType::Var
+                    | TokenType::For
+                    | TokenType::If
+                    | TokenType::While
+                    | TokenType::Print
+                    | TokenType::Return => return,
+                    _ => {
+                        // Do nothing, just advance
+                    }
+                }
+            }
+
+            self.advance();
         }
     }
 }
