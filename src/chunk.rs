@@ -22,6 +22,8 @@ pub enum OpCode {
     EQUAL,
     GREATER,
     LESS,
+    Print,
+    Pop,
 }
 impl Chunk {
     pub fn new() -> Self {
@@ -74,6 +76,8 @@ impl Chunk {
                 OpCode::EQUAL => self.simple_instruction("OP_EQUAL"),
                 OpCode::GREATER => self.simple_instruction("OP_GREATER"),
                 OpCode::LESS => self.simple_instruction("OP_LESS"),
+                OpCode::Print => self.simple_instruction("OP_PRINT"),
+                OpCode::Pop => self.simple_instruction("OP_POP"),
             }
         }
     }

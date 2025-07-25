@@ -69,9 +69,9 @@ impl<'a> Vm<'a> {
 
             match instruction {
                 OpCode::Return => {
-                    if let Ok(result) = self.pop() {
-                        println!("{}", result);
-                    }
+                    // if let Ok(result) = self.pop() {
+                    //     println!("最后求值结果是:{}", result);
+                    // }
                     return InterpretResult::Ok;
                 }
                 OpCode::Constant(index) => {
@@ -144,6 +144,12 @@ impl<'a> Vm<'a> {
                     if self.binary_op(|a, b| Value::Bool(a < b)).is_err() {
                         runtime_error!(self, "Operands must be numbers.");
                     }
+                }
+                OpCode::Print => {
+                    println!("{}", self.pop().unwrap());
+                }
+                OpCode::Pop => {
+                    self.pop().unwrap();
                 }
             }
         }

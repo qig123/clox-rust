@@ -33,12 +33,39 @@ impl<'a> Compiler<'a> {
 
     pub fn compile(mut self) -> Result<Chunk, String> {
         while !self.check(TokenType::Eof) {
-            self.parse_precedence(Precedence::ZERO as u8)?;
+            self.declaration()?;
         }
         self.emit_return();
-        println!("{:?}", self.chunk.code);
-        println!("{:?}", self.chunk.values);
+        println!("[debug]{:?}", self.chunk.code);
+        println!("[debug]{:?}", self.chunk.values);
         Ok(self.chunk)
+    }
+
+    fn declaration(&mut self) -> Result<(), String> {
+        self.statement()
+    }
+
+    fn statement(&mut self) -> Result<(), String> {
+        if self.check(TokenType::Print) {
+            self.advance(); // consume 'print'
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<(), String> {
+        self.parse_precedence(Precedence::ZERO as u8)?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
+        self.emit_opcode(OpCode::Print);
+        Ok(())
+    }
+
+    fn expression_statement(&mut self) -> Result<(), String> {
+        self.parse_precedence(Precedence::ZERO as u8)?;
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
+        self.emit_opcode(OpCode::Pop);
+        Ok(())
     }
 
     fn parse_precedence(&mut self, min_precedence: u8) -> Result<(), String> {
